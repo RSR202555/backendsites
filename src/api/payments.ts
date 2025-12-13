@@ -29,6 +29,7 @@ paymentsRouter.post('/create-preference', async (req, res) => {
     const preferenceBody = {
       items: [
         {
+          id: 'mensalidade',
           title: finalTitle,
           quantity: finalQuantity,
           currency_id: 'BRL',
