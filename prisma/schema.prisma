@@ -111,4 +111,5 @@ enum PaymentStatus {
 enum PaymentProvider {
   STRIPE
   ASAAS
+  MANUAL
 }

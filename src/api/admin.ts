@@ -398,6 +398,99 @@ adminRouter.get('/clients/:userId/payments', async (req, res) => {
   }
 });
 
+// POST /api/admin/clients/:userId/payments/manual-pay
+// Marca uma mensalidade como PAGA manualmente (cria ou atualiza o Payment do mês/ano da referência)
+adminRouter.post('/clients/:userId/payments/manual-pay', async (req, res) => {
+  const userId = Number(req.params.userId);
+  const { referenceDate, paidAt } = req.body as {
+    referenceDate?: string;
+    paidAt?: string;
+  };
+
+  if (!userId || Number.isNaN(userId)) {
+    return res.status(400).json({ message: 'userId inválido.' });
+  }
+
+  if (!referenceDate) {
+    return res.status(400).json({ message: 'referenceDate é obrigatório.' });
+  }
+
+  const ref = new Date(referenceDate);
+  if (Number.isNaN(ref.getTime())) {
+    return res.status(400).json({ message: 'referenceDate inválido.' });
+  }
+
+  const paidAtDate = paidAt ? new Date(paidAt) : new Date();
+  if (Number.isNaN(paidAtDate.getTime())) {
+    return res.status(400).json({ message: 'paidAt inválido.' });
+  }
+
+  try {
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        plan: true,
+        payments: true,
+      },
+    });
+
+    if (!subscription || !subscription.plan) {
+      return res.status(404).json({ message: 'Assinatura não encontrada para este cliente.' });
+    }
+
+    const refYear = ref.getFullYear();
+    const refMonth = ref.getMonth();
+
+    const existing = subscription.payments.find((p) => {
+      const d = new Date(p.paidAt ?? p.createdAt);
+      return d.getFullYear() === refYear && d.getMonth() === refMonth;
+    });
+
+    if (existing) {
+      const updated = await prisma.payment.update({
+        where: { id: existing.id },
+        data: {
+          status: 'PAID',
+          provider: 'MANUAL',
+          paidAt: paidAtDate,
+          rawPayload: {
+            ...((existing.rawPayload && typeof existing.rawPayload === 'object'
+              ? (existing.rawPayload as object)
+              : {}) as object),
+            manual: true,
+            referenceDate,
+            markedAt: new Date().toISOString(),
+          },
+        },
+      });
+
+      return res.json({ payment: updated });
+    }
+
+    const created = await prisma.payment.create({
+      data: {
+        subscriptionId: subscription.id,
+        amountCents: subscription.plan.priceCents,
+        paidAt: paidAtDate,
+        status: 'PAID',
+        provider: 'MANUAL',
+        transactionId: `manual-${subscription.id}-${refYear}-${refMonth + 1}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        rawPayload: {
+          manual: true,
+          referenceDate,
+          markedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    return res.status(201).json({ payment: created });
+  } catch (error) {
+    console.error('Erro ao marcar pagamento manualmente:', error);
+    return res.status(500).json({ message: 'Erro ao marcar pagamento manualmente.' });
+  }
+});
+
 adminRouter.post('/sites/:id/block', async (req, res) => {
   const id = Number(req.params.id);
 
