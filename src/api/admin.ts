@@ -452,7 +452,7 @@ adminRouter.post('/clients/:userId/payments/manual-pay', async (req, res) => {
         where: { id: existing.id },
         data: {
           status: 'PAID',
-          provider: 'MANUAL',
+          provider: 'MANUAL' as any,
           paidAt: paidAtDate,
           rawPayload: {
             ...((existing.rawPayload && typeof existing.rawPayload === 'object'
@@ -474,7 +474,7 @@ adminRouter.post('/clients/:userId/payments/manual-pay', async (req, res) => {
         amountCents: subscription.plan.priceCents,
         paidAt: paidAtDate,
         status: 'PAID',
-        provider: 'MANUAL',
+        provider: 'MANUAL' as any,
         transactionId: `manual-${subscription.id}-${refYear}-${refMonth + 1}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
         rawPayload: {
           manual: true,
@@ -487,6 +487,23 @@ adminRouter.post('/clients/:userId/payments/manual-pay', async (req, res) => {
     return res.status(201).json({ payment: created });
   } catch (error) {
     console.error('Erro ao marcar pagamento manualmente:', error);
+
+    const errorMessage =
+      error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: unknown }).message)
+        : '';
+
+    if (
+      errorMessage.toLowerCase().includes('paymentprovider') ||
+      errorMessage.toLowerCase().includes('invalid enum') ||
+      errorMessage.toLowerCase().includes('enum')
+    ) {
+      return res.status(500).json({
+        message:
+          'Falha ao marcar pagamento manualmente: banco de dados provavelmente sem migração do enum PaymentProvider (valor MANUAL). Rode as migrações do Prisma no servidor e tente novamente.',
+      });
+    }
+
     return res.status(500).json({ message: 'Erro ao marcar pagamento manualmente.' });
   }
 });
